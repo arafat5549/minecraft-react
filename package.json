@@ -1,0 +1,27 @@
+{
+  "name": "reactcraft",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "一个使用 Node.js + React + Vite + Three.js 构建的浏览器体素沙盒（我的世界风格）",
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,VITE -c blue,green \"npm:server\" \"npm:client\"",
+    "client": "vite --host",
+    "server": "node server/index.js",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^5.4.11"
+  }
+}
