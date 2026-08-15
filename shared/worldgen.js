@@ -173,12 +173,12 @@ export function getSurfaceHeight(x, z, seed, cache = null) {
 }
 
 export function isTreeAt(tx, tz, seed) {
-  return hash2(tx, tz, seed + 777) % 17 === 0;
+  return hash2(tx, tz, seed + 777) < 0.025;
 }
 
 // ---------- 方块查询 ----------
 
-function groundBlock(y, h, seed, cache) {
+function groundBlock(y, h) {
   if (y === h) {
     if (h <= WATER_LEVEL + 1) return 'sand';
     if (h >= 36) return 'snow';
@@ -203,8 +203,8 @@ function treeBlock(x, y, z, seed, h, cache = null) {
       if (!isTreeAt(tx, tz, seed)) continue;
 
       const th = getSurfaceHeight(tx, tz, seed, cache);
-      // 树只长在草地/泥土上
-      if (th <= WATER_LEVEL + 1 || th >= 36) continue;
+      // 树只长在草地/泥土上（沙滩和雪原不长树）
+      if (th <= WATER_LEVEL + 2 || th >= 36) continue;
 
       const lx = x - tx;
       const lz = z - tz;
@@ -233,7 +233,7 @@ export function terrainBlock(x, y, z, seed, cache = null) {
   const h = getSurfaceHeight(x, z, seed, cache);
 
   if (y <= h) {
-    return groundBlock(y, h, seed, cache);
+    return groundBlock(y, h);
   }
 
   if (y <= WATER_LEVEL) return 'water';

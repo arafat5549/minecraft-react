@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { DEFAULT_SEED, HOTBAR } from '../../shared/worldgen.js';
-import { World, CHUNK_SIZE } from './World.js';
+import { World } from './World.js';
 import { Player } from './Player.js';
 
 const MAX_REACH = 7;
@@ -42,6 +42,9 @@ export class Game {
     this.canvas = canvas;
     this.callbacks = callbacks;
     this.active = false;
+    this.pointerLocked = false;
+    this._wasPointerLocked = false;
+    this.paused = false;
     this.disposed = false;
     this.serverConnected = false;
     this.playerId = null;
@@ -69,6 +72,7 @@ export class Game {
 
     this.world = new World(this.scene, this.seed);
     const spawn = this.world.findSpawn(this.seed);
+    this.world.prebuildChunk(spawn.x, spawn.z);
     this.player = new Player(spawn.x, spawn.y, spawn.z);
     this._syncCamera();
 
@@ -83,6 +87,7 @@ export class Game {
       sprint: false,
     };
     this.remotePlayers = new Map();
+    this.dragLook = { active: false, button: 0, startX: 0, startY: 0, lastX: 0, lastY: 0, moved: false };
     this.ws = null;
     this.reconnectTimer = null;
     this.sendTimer = 0;
@@ -99,6 +104,9 @@ export class Game {
     this._mouseDownHandler = (e) => this._onMouseDown(e);
     this._wheelHandler = (e) => this._onWheel(e);
     this._pointerLockHandler = () => this._onPointerLockChange();
+    this._pointerDownHandler = (e) => this._onPointerDown(e);
+    this._pointerMoveHandler = (e) => this._onPointerMove(e);
+    this._pointerUpHandler = (e) => this._onPointerUp(e);
     this._contextMenuHandler = (e) => e.preventDefault();
 
     window.addEventListener('resize', this._resizeHandler);
@@ -109,6 +117,9 @@ export class Game {
     document.addEventListener('wheel', this._wheelHandler, { passive: false });
     document.addEventListener('pointerlockchange', this._pointerLockHandler);
     document.addEventListener('contextmenu', this._contextMenuHandler);
+    canvas.addEventListener('pointerdown', this._pointerDownHandler);
+    document.addEventListener('pointermove', this._pointerMoveHandler);
+    document.addEventListener('pointerup', this._pointerUpHandler);
 
     this._loop = this._loop.bind(this);
     this.rafId = requestAnimationFrame(this._loop);
@@ -118,12 +129,33 @@ export class Game {
     this.playerName = (name || '玩家').slice(0, 16);
     this.playerColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#4fc3f7';
     this.active = true;
+    this.paused = false;
+    this._emitPauseState();
     this.connect();
+    this.canvas.focus?.();
     this._requestLock();
   }
 
   resume() {
-    if (this.active) this._requestLock();
+    if (!this.active) return;
+    this.paused = false;
+    this._emitPauseState();
+    this.canvas.focus?.();
+    this._requestLock();
+  }
+
+  _emitPauseState() {
+    this.callbacks.onPauseChange?.(this.paused);
+  }
+
+  _controlsEnabled() {
+    return this.active && !this.paused;
+  }
+
+  setControl(control, value) {
+    if (Object.prototype.hasOwnProperty.call(this.input, control)) {
+      this.input[control] = Boolean(value);
+    }
   }
 
   setSelected(index) {
@@ -185,6 +217,7 @@ export class Game {
       if (this.disposed) return;
       this.ws = null;
       this.serverConnected = false;
+      for (const id of [...this.remotePlayers.keys()]) this._removeRemote(id);
       this._emitState();
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
@@ -205,6 +238,7 @@ export class Game {
           this._resetWorld(msg.seed);
         }
         this.world.applyEdits(msg.edits || []);
+        for (const id of [...this.remotePlayers.keys()]) this._removeRemote(id);
         if (msg.players) {
           for (const remote of msg.players) {
             if (remote.id !== this.playerId) this._upsertRemote(remote);
@@ -335,7 +369,17 @@ export class Game {
 
   _onPointerLockChange() {
     const locked = document.pointerLockElement === this.canvas;
+    this.pointerLocked = locked;
     this.callbacks.onLockChange?.(locked);
+
+    // 只有“曾经成功锁定，之后 Esc 退出锁定”才视为暂停。
+    // 浏览器拒绝指针锁定（如 iframe 未授权）时，仍可用拖拽模式继续玩。
+    if (locked) {
+      this._wasPointerLocked = true;
+    } else if (this.active && this._wasPointerLocked) {
+      this.paused = true;
+      this._emitPauseState();
+    }
   }
 
   _onKeyDown(e) {
@@ -371,9 +415,15 @@ export class Game {
         this.input.sprint = true;
         break;
       case 'KeyF':
-        if (document.pointerLockElement === this.canvas) {
+        if (this._controlsEnabled()) {
           this.player.toggleFly();
           this._emitState();
+        }
+        break;
+      case 'KeyP':
+        if (!this.pointerLocked) {
+          this.paused = !this.paused;
+          this._emitPauseState();
         }
         break;
       case 'Digit1': this.setSelected(0); break;
@@ -422,23 +472,80 @@ export class Game {
     }
   }
 
-  _onMouseMove(e) {
-    if (!this.active || document.pointerLockElement !== this.canvas) return;
-    const sensitivity = 0.0023;
-    this.player.yaw -= e.movementX * sensitivity;
-    this.player.pitch -= e.movementY * sensitivity;
+  _rotateView(dx, dy, sensitivity = 0.0023) {
+    this.player.yaw -= dx * sensitivity;
+    this.player.pitch -= dy * sensitivity;
     const limit = Math.PI / 2 - 0.01;
     this.player.pitch = Math.max(-limit, Math.min(limit, this.player.pitch));
   }
 
+  _onMouseMove(e) {
+    if (!this.active || this.paused) return;
+    if (this.pointerLocked) {
+      this._rotateView(e.movementX || 0, e.movementY || 0);
+    }
+  }
+
+  _onPointerDown(e) {
+    // 指针锁定失败/不可用时的拖拽视角模式
+    if (!this.active || this.paused || this.pointerLocked) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+
+    this.dragLook.active = true;
+    this.dragLook.button = e.button;
+    this.dragLook.startX = e.clientX;
+    this.dragLook.startY = e.clientY;
+    this.dragLook.lastX = e.clientX;
+    this.dragLook.lastY = e.clientY;
+    this.dragLook.moved = false;
+    try {
+      this.canvas.setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+    // 触屏拖动时避免页面滚动；鼠标点击不阻止默认行为，保证画布获得键盘焦点
+    if (e.pointerType !== 'mouse') e.preventDefault();
+  }
+
+  _onPointerMove(e) {
+    if (!this.dragLook.active) return;
+    if (!this._controlsEnabled()) {
+      this.dragLook.active = false;
+      return;
+    }
+    const dx = e.clientX - this.dragLook.lastX;
+    const dy = e.clientY - this.dragLook.lastY;
+    this.dragLook.lastX = e.clientX;
+    this.dragLook.lastY = e.clientY;
+
+    const distance = Math.hypot(e.clientX - this.dragLook.startX, e.clientY - this.dragLook.startY);
+    if (distance > 4) this.dragLook.moved = true;
+    if (this.dragLook.moved) {
+      this._rotateView(dx, dy, 0.0045);
+    }
+  }
+
+  _onPointerUp(e) {
+    if (!this.dragLook.active) return;
+    const { button, moved } = this.dragLook;
+    this.dragLook.active = false;
+    if (!this._controlsEnabled()) return;
+
+    // 没有拖动的点击 = 破坏 / 放置
+    if (!moved) {
+      if (button === 0) this._breakBlock();
+      if (button === 2) this._placeBlock();
+    }
+  }
+
   _onMouseDown(e) {
-    if (!this.active || document.pointerLockElement !== this.canvas) return;
+    if (!this._controlsEnabled() || !this.pointerLocked) return;
     if (e.button === 0) this._breakBlock();
     if (e.button === 2) this._placeBlock();
   }
 
   _onWheel(e) {
-    if (!this.active || document.pointerLockElement !== this.canvas) return;
+    if (!this._controlsEnabled()) return;
     e.preventDefault();
     const delta = e.deltaY > 0 ? 1 : -1;
     this.setSelected((this.selectedIndex + delta + HOTBAR.length) % HOTBAR.length);
@@ -564,7 +671,7 @@ export class Game {
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
 
-    if (this.active && document.pointerLockElement === this.canvas) {
+    if (this._controlsEnabled()) {
       this.player.update(dt, this.input, this.world);
     }
 
@@ -615,6 +722,9 @@ export class Game {
     document.removeEventListener('wheel', this._wheelHandler);
     document.removeEventListener('pointerlockchange', this._pointerLockHandler);
     document.removeEventListener('contextmenu', this._contextMenuHandler);
+    this.canvas.removeEventListener('pointerdown', this._pointerDownHandler);
+    document.removeEventListener('pointermove', this._pointerMoveHandler);
+    document.removeEventListener('pointerup', this._pointerUpHandler);
 
     for (const id of [...this.remotePlayers.keys()]) this._removeRemote(id);
     this.world.dispose();

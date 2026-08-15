@@ -169,6 +169,12 @@ wss.on('connection', (ws) => {
   });
 });
 
+// 每 50ms 广播一次所有玩家位置（20Hz）
+const broadcastTimer = setInterval(() => {
+  if (players.size > 0) broadcastPlayers();
+}, 50);
+broadcastTimer.unref?.();
+
 server.listen(PORT, () => {
   console.log(`[ReactCraft] 服务器已启动: http://localhost:${PORT}`);
   console.log(`[ReactCraft] WebSocket: ws://localhost:${PORT}/ws`);

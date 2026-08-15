@@ -34,6 +34,7 @@ export default function App() {
   const gameRef = useRef(null);
   const [phase, setPhase] = useState('menu');
   const [locked, setLocked] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [selected, setSelected] = useState(0);
   const [hud, setHud] = useState(DEFAULT_HUD);
   const [name, setName] = useState(() => localStorage.getItem('reactcraft-name') || '建筑师');
@@ -43,6 +44,7 @@ export default function App() {
     const game = new Game(canvasRef.current, {
       onState: setHud,
       onLockChange: setLocked,
+      onPauseChange: setPaused,
       onHotbar: setSelected,
     });
     gameRef.current = game;
@@ -68,6 +70,11 @@ export default function App() {
     gameRef.current?.resume();
   };
 
+  const holdControl = (control, value) => (e) => {
+    e.preventDefault();
+    gameRef.current?.setControl(control, value);
+  };
+
   const selectedBlock = HOTBAR[selected];
 
   return (
@@ -75,8 +82,9 @@ export default function App() {
       <canvas
         ref={canvasRef}
         className="game-canvas"
+        tabIndex={0}
         onClick={() => {
-          if (phase === 'playing' && !locked) handleResume();
+          if (phase === 'playing' && paused) handleResume();
         }}
       />
 
@@ -102,6 +110,9 @@ export default function App() {
           <div className="panel panel--top-right mono">
             <div>{hud.fps} FPS</div>
             <div>{hud.flying ? '飞行模式' : '行走模式'}</div>
+            <div className={locked ? 'muted' : 'fallback-hint'}>
+              {locked ? '鼠标已锁定' : '拖拽旋转模式'}
+            </div>
             <div className="muted">{hud.name}</div>
           </div>
 
@@ -123,12 +134,28 @@ export default function App() {
             </div>
           </div>
 
-          <div className="help mono">
+          <div className={`help mono ${!locked && !paused ? 'help--with-controls' : ''}`}>
             <div>WASD 移动 · 空格 跳跃 · Shift 疾跑/下降 · F 飞行</div>
             <div>左键 破坏 · 右键 放置 · 1-9/滚轮 选方块 · Esc 暂停</div>
+            {!locked && <div className="fallback-hint">当前为拖拽模式：按住画面拖动旋转视角 · P 暂停</div>}
           </div>
 
-          {!locked && (
+          {!locked && !paused && (
+            <div className="touch-controls mono">
+              <div className="dpad">
+                <button type="button" className="dpad__btn dpad__btn--up" onPointerDown={holdControl('forward', true)} onPointerUp={holdControl('forward', false)} onPointerLeave={holdControl('forward', false)} onPointerCancel={holdControl('forward', false)}>W</button>
+                <button type="button" className="dpad__btn dpad__btn--left" onPointerDown={holdControl('left', true)} onPointerUp={holdControl('left', false)} onPointerLeave={holdControl('left', false)} onPointerCancel={holdControl('left', false)}>A</button>
+                <button type="button" className="dpad__btn dpad__btn--right" onPointerDown={holdControl('right', true)} onPointerUp={holdControl('right', false)} onPointerLeave={holdControl('right', false)} onPointerCancel={holdControl('right', false)}>D</button>
+                <button type="button" className="dpad__btn dpad__btn--down" onPointerDown={holdControl('back', true)} onPointerUp={holdControl('back', false)} onPointerLeave={holdControl('back', false)} onPointerCancel={holdControl('back', false)}>S</button>
+              </div>
+              <div className="action-pad">
+                <button type="button" className="dpad__btn action-pad__jump" onPointerDown={holdControl('jump', true)} onPointerUp={holdControl('jump', false)} onPointerLeave={holdControl('jump', false)} onPointerCancel={holdControl('jump', false)}>空格</button>
+                <button type="button" className="dpad__btn action-pad__down" onPointerDown={holdControl('down', true)} onPointerUp={holdControl('down', false)} onPointerLeave={holdControl('down', false)} onPointerCancel={holdControl('down', false)}>下降</button>
+              </div>
+            </div>
+          )}
+
+          {paused && (
             <div className="overlay">
               <div className="overlay__card">
                 <h2>游戏已暂停</h2>

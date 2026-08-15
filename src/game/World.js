@@ -11,6 +11,7 @@ import {
 
 export const CHUNK_SIZE = 16;
 const RENDER_RADIUS = 3;
+const CHUNKS_PER_FRAME = 1;
 
 const FACE_DEFS = [
   { name: 'top', dir: [0, 1, 0], shade: 1.0, corners: [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]] },
@@ -22,11 +23,6 @@ const FACE_DEFS = [
 ];
 
 const FACE_COUNT = FACE_DEFS.length;
-
-function isOpaque(block) {
-  const def = BLOCKS[block] || BLOCKS.air;
-  return !def.transparent;
-}
 
 function shouldDrawFace(block, neighbor) {
   if (block === neighbor) return false;
@@ -211,12 +207,18 @@ export class World {
     this.buildQueue = missing;
 
     let built = 0;
-    while (this.buildQueue.length > 0 && built < 2) {
+    while (this.buildQueue.length > 0 && built < CHUNKS_PER_FRAME) {
       const next = this.buildQueue.shift();
       this._buildChunk(next.cx, next.cz);
       built += 1;
       this.builtFrames += 1;
     }
+  }
+
+  prebuildChunk(x, z) {
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    this._buildChunk(cx, cz);
   }
 
   _buildChunk(cx, cz) {
@@ -300,14 +302,17 @@ export class World {
             const start = positions.length / 3;
             const color = faceColor(block, f, wx, y, wz, this.seed);
 
-            for (const corner of face.corners) {
+            face.corners.forEach((corner, vi) => {
               positions.push(
                 wx + corner[0],
                 y + corner[1],
                 wz + corner[2],
               );
-              colors.push(color[0], color[1], color[2]);
-            }
+
+              // 每个顶点再做一次轻微明暗抖动，呈现像素颗粒感
+              const variation = 0.94 + hash3(wx + corner[0], y + corner[1], wz + corner[2], this.seed + f * 13 + vi * 7) * 0.12;
+              colors.push(color[0] * variation, color[1] * variation, color[2] * variation);
+            });
 
             indices.push(
               start, start + 1, start + 2,
