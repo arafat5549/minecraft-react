@@ -37,8 +37,11 @@
 
 1. `base` 必须支持子路径部署，默认使用 `base: './'`
 2. 构建输出目录固定为 `dist`
-3. 前端端口统一为 `5173`，后端端口统一为 `3001`
-4. 如果项目含后端，后端必须支持生产环境托管 `dist`
+3. 端口统一由工作区根目录 `PORTS.md` 维护，不得在项目里自行写死新端口
+4. 新项目端口 = 上一项目 + 1；前端从 `5173` 起，后端从 `3001` 起
+5. 创建新项目时，必须同步更新 `PORTS.md`、`AGENTS.md`、`vite.config.js`，并在同一次提交中完成
+6. Vite 必须设置 `strictPort: true`；后端必须从 `PORT` 环境变量读取登记端口
+7. 如果项目含后端，后端必须支持生产环境托管 `dist`
 
 ## 4. 强制 GitHub Actions 流程
 
@@ -158,6 +161,7 @@ jobs:
 ## 9. 完成标准（Definition of Done）
 
 - [ ] 技术栈为 Node.js + React + Vite
+- [ ] 已在 `PORTS.md` 按 +1 规则登记端口，并写入 `vite.config.js`
 - [ ] `npm install && npm run build` 成功
 - [ ] 生产构建包含 manifest、sw.js、完整 PWA 图标
 - [ ] Service Worker 仅生产环境注册
