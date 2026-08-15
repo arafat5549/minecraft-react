@@ -11,6 +11,39 @@
 - 🧩 确定性世界种子：客户端与服务器共享同一套世界生成算法
 - 🏭 生产模式：一条命令启动，Node.js 直接托管 Vite 构建产物
 
+## 📱 PWA（可安装到桌面 / 离线游玩）
+
+项目已支持 PWA：
+
+- Web App Manifest：`public/manifest.webmanifest`
+- Service Worker：`public/sw.js`
+- 桌面 / Android Chrome、Edge：地址栏会出现“安装”按钮
+- iOS Safari：分享 → 添加到主屏幕
+- 支持 GitHub Pages 子路径部署（`/minecraft-react/`）
+
+体验 PWA 必须使用生产构建（开发模式不注册 Service Worker）：
+
+```bash
+npm run build
+npm start
+```
+
+然后打开 http://localhost:3001。首次访问后，即使断网也能再次打开游戏（单人离线模式可玩；多人联机需要后端在线）。
+
+### GitHub Pages 自动部署
+
+仓库已附带 `.github/workflows/pages.yml`。在 GitHub 仓库打开：
+
+`Settings → Pages → Source` 选择 **GitHub Actions**
+
+之后每次推送 `main` 分支，都会自动构建并发布到：
+
+```
+https://arafat5549.github.io/minecraft-react/
+```
+
+Pages 上运行的是纯前端 PWA（可离线单人玩）；多人联机需要另外部署 `server/index.js`，并通过 `VITE_WS_URL` 指向后端 WebSocket 地址。
+
 ## 🚀 快速开始
 
 要求：Node.js 18+（推荐 20/22）
@@ -68,6 +101,12 @@ PORT=8080 WORLD_SEED=8888 npm start
 
 ```
 minecraft-react/
+├── .github/workflows/
+│   └── pages.yml          # GitHub Pages 自动部署
+├── public/
+│   ├── manifest.webmanifest  # PWA 清单
+│   ├── sw.js                 # Service Worker（离线缓存）
+│   └── icons/                # PWA 图标
 ├── server/
 │   └── index.js           # Express + WebSocket 多人服务器
 ├── shared/
