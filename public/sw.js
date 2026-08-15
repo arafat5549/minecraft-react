@@ -31,6 +31,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
 
   // 页面导航：网络优先，离线时回退到缓存的 index.html
   if (request.mode === 'navigate') {
